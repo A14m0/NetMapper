@@ -9,8 +9,8 @@ import sys
 parser = argparse.ArgumentParser(description="Passively look for devices on your network")
 parser.add_argument("--interface", metavar="<INTERFACE>", type=str, help="Interface to use when scanning")
 parser.add_argument("--watch", metavar="ADDRESS", type=str, help="Watch for activity from specific address")
-
-
+parser.add_argument("--printall", dest="printall", action='store_true', help="Print every packet we see")
+parser.set_defaults(printall=False)
 
 # watch for activity from a particular address
 def listen_for_activity(addr, device="wlp58s0"):
@@ -70,10 +70,10 @@ def find_active(device="wlp58s0"):
                 active_ips.append(test_addr)
 
 # literally prints every packet it finds
-def scan_net():
-    cap = pyshark.LiveCapture(interface="wlp3s0")
+def scan_net(device="wlp58s0"):
+    cap = pyshark.LiveCapture(interface=device)
     print("Capturing...")
-    for packet in cap.sniff_continuously(packet_count=5):
+    for packet in cap.sniff_continuously():
         print("Packet: ", packet)
     print("Sniffed packets")
 
@@ -90,6 +90,11 @@ def main():
             listen_for_activity(args.watch, args.interface)
         else:
             listen_for_activity(args.watch)
+    elif args.printall:
+        if args.interface:
+            scan_net(args.interface)
+        else:
+            scan_net()
 
     elif args.interface:
         find_active(args.interface)

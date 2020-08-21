@@ -1,30 +1,54 @@
-from PyQt5 import QtGui 
-from PyQt5.QtGui import QPainter, QBrush, QPen
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow
-import sys
+#!/usr/bin/env python3
 
-class Window(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.title = "Drawing tut"
-        self.top = 150
-        self.left = 150
-        self.width = 500
-        self.height = 500
-        self.InitWindow()
+import pyshark
 
-    def InitWindow(self):
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.top, self.left, self.width, self.height)
-        self.show()
+def listen_for_activity(addr):
+    cap = pyshark.LiveCapture(interface="wlp3s0")
+    print("Waiting for activity from %s..." % addr)
+    for packet in cap.sniff_continuously():
+        if "Layer IP:" in str(packet):
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setPen(QPen(Qt.green, 8, Qt.DashLine))
-        painter.setBrush(QBrush(Qt.red, Qt.SolidPattern))
-        painter.drawEllipse(40, 40, 400, 400)
+            tmp_str = str(packet).split("Layer IP:")[-1].splitlines()
+            tgt_line = ""
+            for line in tmp_str:
+                if "Source: " in line:
+                    tgt_line = line
+                    break
+            test_addr = tgt_line.split(" ")[-1]
 
-App = QApplication(sys.argv)
-window = Window()
-sys.exit(App.exec())
+            if test_addr == addr:
+                print("Found activity from %s!" % addr)
+                packet.pretty_print()
+                return
+
+
+def find_active():
+    cap = pyshark.LiveCapture(interface="wlp3s0")
+    print("Finding active devices...")
+    
+    active_ips = []
+    for packet in cap.sniff_continuously():
+        if "Layer IP:" in str(packet):
+            tmp_str = str(packet).split("Layer IP:")[-1].splitlines()
+            tgt_line = ""
+            for line in tmp_str:
+                if "Source:" in line:
+                    tgt_line = line
+                    break
+            test_addr = tgt_line.split(" ")[-1]
+
+            if test_addr not in active_ips:
+                print("New IP: %s" % test_addr)
+                active_ips.append(test_addr)
+
+def scan_net():
+    cap = pyshark.LiveCapture(interface="wlp3s0")
+    print("Capturing...")
+    for packet in cap.sniff_continuously(packet_count=5):
+        print("Packet: ", packet)
+    print("Sniffed packets")
+
+#scan_net()
+#listen_for_activity("192.168.0.22")
+
+find_active()

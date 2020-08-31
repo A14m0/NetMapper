@@ -3,7 +3,7 @@
 import pyshark
 import argparse
 import sys
-
+import os
 
 # set up arguments
 parser = argparse.ArgumentParser(description="Passively look for devices on your network")
@@ -11,6 +11,12 @@ parser.add_argument("--interface", metavar="<INTERFACE>", type=str, help="Interf
 parser.add_argument("--watch", metavar="ADDRESS", type=str, help="Watch for activity from specific address")
 parser.add_argument("--printall", dest="printall", action='store_true', help="Print every packet we see")
 parser.set_defaults(printall=False)
+
+
+# function that returns if the user is root or not
+def has_root():
+    return os.geteuid() == 0
+
 
 # watch for activity from a particular address
 def listen_for_activity(addr, device="wlp58s0"):
@@ -84,6 +90,10 @@ def scan_net(device="wlp58s0"):
 def main():
     # parse the arguments
     args = parser.parse_args()
+
+    if not has_root():
+        print("[Error] Insufficient privilages! Please run as root")
+        sys.exit(1)
 
     if args.watch: 
         if args.interface:

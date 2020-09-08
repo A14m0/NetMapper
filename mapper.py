@@ -54,7 +54,7 @@ def find_active(device="wlp58s0"):
     # set up the capture object
     cap = pyshark.LiveCapture(interface=device)
     print("Finding active devices...")
-    
+
     active_ips = []
     total_packets = 0
 
@@ -83,8 +83,6 @@ def scan_net(device="wlp58s0"):
         print("Packet: ", packet)
     print("Sniffed packets")
 
-#scan_net()
-#listen_for_activity("192.168.0.22")
 
 # the main function
 def main():
@@ -95,7 +93,7 @@ def main():
         print("[Error] Insufficient privilages! Please run as root")
         sys.exit(1)
 
-    if args.watch: 
+    if args.watch:
         if args.interface:
             listen_for_activity(args.watch, args.interface)
         else:

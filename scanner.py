@@ -8,10 +8,54 @@ import netifaces
 import netaddr
 import time
 import sys
+import os
 from random import randint, random
+from signal import signal, SIGINT
 
 # some random ports to try to connect to while working
-random_ports = [80, 443, 8080, 22, 53]
+random_ports = [80, 443, 8080, 22]
+
+# log file object
+log_f = None
+
+# global list of current ips
+ips = []
+alive_ips = []
+
+# logs some stuff to stdout and log.txt
+def log(string):
+    global log_f
+    if log_f == None:
+        log_f = open('log.txt', 'w')
+    
+    log_f.write(string)
+    print(string)
+
+# CTRL-C handler
+def sig_handler(signal_recvd, frame):
+    global alive_ips
+    global ips
+
+    print("[INFO] Caught CTRL-C. Halting...")
+
+    f = open(".resume", "w")
+
+    for ip in ips:
+        f.write(ip)
+        f.write("\n")
+    f.close()
+
+    # print info
+    log("[INFO] COMPLETE")
+    log("_" * 40)
+
+    print("[INFO] Alive addresses:")
+
+    for ip in alive_ips:
+        print("\t{}".format(ip))
+
+    sys.exit(1)
+
 
 # generates a list of all valid IP addresses on the network
 def generate_targets(interface):
@@ -36,6 +80,79 @@ def generate_targets(interface):
     return targets
 
 
+# main function
+def main(interface):
+    global ips
+    global alive_ips
+
+    # check if stuff has already been run
+    if os.path.exists(".resume"):
+        cont = input("[INFO] Detected previously incomplete run\n\tContinue? (y/n) > ").lower()
+        if cont == 'n':
+            # generate a new set
+            ips = generate_targets(interface)
+        else:
+            # read in the old data
+            f = open(".resume", "r")
+            ips = f.read().splitlines()
+            f.close()
+    else:
+        ips = generate_targets(interface)
+
+
+
+    # set up the terminating signal handler
+    signal(SIGINT, sig_handler)
+    
+    ips = generate_targets(interface)
+
+    sock = s.socket(s.AF_INET, s.SOCK_STREAM)
+    #sock.setsockopt()
+
+    num_ips = len(ips)
+    total_done = 0
+
+    # loop over the addresses
+    for i in range(num_ips):
+        # randomly choose an ip from the list
+        address = ips[randint(0, len(ips)-1)]
+        # try to connect on random known port
+        try:
+            port = random_ports[randint(0, len(random_ports)-1)]
+            log("[INFO] Trying {} on {} ({:>.1f}%)".format(address, port, total_done/len(ips)))
+
+            sock.connect((address, port))
+        
+            # what are the chances we get this far without exceptions? 
+            # low... but not impossible
+            sock.close()
+            alive_ips.append(address)
+            log("[INFO] Address '{}' is up AND port '{}' is open".format(address, port))
+    
+        # host is up and port is closed
+        except ConnectionRefusedError:
+            alive_ips.append(address)
+            log("[INFO] Address '{}' is up".format(address))
+
+        # host is down
+        except OSError:
+            pass
+
+        # user interrupt
+        except KeyboardInterrupt:
+            print("[CANCELED]")
+            break
+
+        # we have gotten the info we wanted on the address, so remove it 
+        ips.remove(address)
+
+        total_done += 1
+        time.sleep(random())
+
+
+
+
+
 if len(sys.argv) != 2:
     print("[ERROR] Illegal argument count")
     print("Usage: {} <interface>".format(sys.argv[0]))
@@ -44,62 +161,4 @@ else:
     interface = sys.argv[1]
 
 
-ips = generate_targets(interface)
-
-sock = s.socket(s.AF_INET, s.SOCK_STREAM)
-#sock.setsockopt()
-
-alive_ips = []
-num_ips = len(ips)
-total_done = 0
-
-# loop over the addresses
-for i in range(num_ips):
-    # cleans the screen of crap
-    print(" " * 40, end="\r")
-
-
-    # randomly choose an ip from the list
-    address = ips[randint(0, len(ips)-1)]
-    # try to connect on random known port
-    try:
-        port = random_ports[randint(0, len(random_ports)-1)]
-        print("[INFO] Trying {} on {}\t\t{:>.1f}%".format(address, port, total_done/len(ips)), end='\r')
-
-        sock.connect((address, port))
-        
-        # what are the chances we get this far without exceptions? 
-        # low... but not impossible
-        sock.close()
-        alive_ips.append(address)
-        print("[INFO] Address '{}' is up AND port '{}' is open".format(address, port))
-    
-    # host is up and port is closed
-    except ConnectionRefusedError:
-        alive_ips.append(address)
-        print("[INFO] Address '{}' is up".format(address))
-
-    # host is down
-    except OSError:
-        pass
-
-    # user interrupt
-    except KeyboardInterrupt:
-        print("[CANCELED]")
-        break
-
-    # we have gotten the info we wanted on the address, so remove it 
-    ips.remove(address)
-
-    total_done += 1
-    time.sleep(random())
-
-
-# print info
-print("[INFO] COMPLETE")
-print("_" * 40)
-
-print("[INFO] Alive addresses:")
-
-for ip in alive_ips:
-    print("\t{}".format(ip))
+main(interface)

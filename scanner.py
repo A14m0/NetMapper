@@ -45,6 +45,18 @@ def sig_handler(signal_recvd, frame):
         f.write("\n")
     f.close()
 
+    complete()
+
+    sys.exit(1)
+
+# cleans the resume file
+def clear_resume():
+    os.remove(".resume")
+
+# done with scanning (either quit or completion)
+def complete():
+    global alive_ips
+
     # print info
     log("[INFO] COMPLETE")
     log("_" * 40)
@@ -53,8 +65,6 @@ def sig_handler(signal_recvd, frame):
 
     for ip in alive_ips:
         print("\t{}".format(ip))
-
-    sys.exit(1)
 
 
 # generates a list of all valid IP addresses on the network
@@ -92,10 +102,14 @@ def main(interface):
             # generate a new set
             ips = generate_targets(interface)
         else:
+            print("[INFO] Resuming scan...")
             # read in the old data
             f = open(".resume", "r")
-            ips = f.read().splitlines()
+            dat = f.read()
+            ips = dat.replace("\00", "").splitlines()[0:-1]
             f.close()
+            print("[INFO] Remaining addresses: {}".format(len(ips)))
+            
     else:
         ips = generate_targets(interface)
 
@@ -104,8 +118,6 @@ def main(interface):
     # set up the terminating signal handler
     signal(SIGINT, sig_handler)
     
-    ips = generate_targets(interface)
-
     sock = s.socket(s.AF_INET, s.SOCK_STREAM)
     #sock.setsockopt()
 
@@ -149,6 +161,8 @@ def main(interface):
         total_done += 1
         time.sleep(random())
 
+    clear_resume()
+    complete()
 
 
 

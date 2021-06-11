@@ -3,32 +3,30 @@
 import pyshark
 import argparse
 import sys
-import os
+
+# import common functions
+import common
 
 # set up arguments
 parser = argparse.ArgumentParser(description="Passively look for devices on your network")
 parser.add_argument("--interface", metavar="<INTERFACE>", type=str, help="Interface to use when scanning")
-parser.add_argument("--watch", metavar="ADDRESS", type=str, help="Watch for activity from specific address")
+parser.add_argument("--watch", metavar="ADDRESS", type=str, help="Watch for activity from a specific IPv4 address")
+parser.add_argument("--watchmac", metavar="MAC", type=str, help="Watch for activity from a specific MAC address")
 parser.add_argument("--printall", dest="printall", action='store_true', help="Print every packet we see")
 parser.set_defaults(printall=False)
 
-
-# function that returns if the user is root or not
-def has_root():
-    return os.geteuid() == 0
-
-
 # watch for activity from a particular address
-def listen_for_activity(addr, device="wlp58s0"):
+def listen_for_activity(addr, device="wlp58s0", search="Layer IP:"):
     # create capture generator
     cap = pyshark.LiveCapture(interface=device)
     print("Waiting for activity from %s..." % addr)
+    addr = addr.lower()
 
     total_packets = 0
     for packet in cap.sniff_continuously():
         total_packets += 1
         # get all of the IP packets
-        if "Layer IP:" in str(packet):
+        if search in str(packet):
 
             tmp_str = str(packet).split("Layer IP:")[-1].splitlines()
             tgt_line = ""
@@ -40,7 +38,7 @@ def listen_for_activity(addr, device="wlp58s0"):
                     break
 
             test_addr = tgt_line.split(" ")[-1]
-
+            
             if test_addr == addr:
                 print("Found activity from %s! (checked %d packets)" % (addr, total_packets))
                 packet.pretty_print()
@@ -89,7 +87,7 @@ def main():
     # parse the arguments
     args = parser.parse_args()
 
-    if not has_root():
+    if not common.has_root():
         print("[Error] Insufficient privilages! Please run as root")
         sys.exit(1)
 
@@ -98,6 +96,11 @@ def main():
             listen_for_activity(args.watch, args.interface)
         else:
             listen_for_activity(args.watch)
+    elif args.watchmac:
+        if args.interface:
+            listen_for_activity(args.watchmac, args.interface, "Layer ETH:")
+        else:
+            listen_for_activity(args.watchmac, search="Layer ETH:")
     elif args.printall:
         if args.interface:
             scan_net(args.interface)

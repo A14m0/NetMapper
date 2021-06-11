@@ -1,16 +1,27 @@
-# this is a really slow network scanner. 
+# this is a really slow network scanner.
 # the idea is that it will slowly poke around and check who's up and whos not
-# over the course of a while, ideally without being discoverd or tripping over 
+# over the course of a while, ideally without being discoverd or tripping over
 # network detection systems. who knows if it works
 
 import socket as s
 import netifaces
+import arprequest
+import argparse
 import netaddr
 import time
 import sys
 import os
+import common
 from random import randint, random
 from signal import signal, SIGINT
+
+
+# set up arguments
+parser = argparse.ArgumentParser(description="Slow network scanner")
+parser.add_argument('-i', "--interface", metavar="<INTERFACE>", type=str, help="Interface to use when scanning", required=True)
+parser.add_argument('-a', "--arp", dest="arpscan", action="store_true", help="Utilize ARP scanning instead of TCP connections")
+parser.set_defaults(arpscan=False)
+
 
 # some random ports to try to connect to while working
 random_ports = [80, 443, 8080, 22]
@@ -23,13 +34,13 @@ ips = []
 alive_ips = []
 
 # logs some stuff to stdout and log.txt
-def log(string):
+def log(string, e="\n"):
     global log_f
     if log_f == None:
         log_f = open('log.txt', 'w')
-    
+
     log_f.write(string)
-    print(string)
+    print(string, end=e)
 
 # CTRL-C handler
 def sig_handler(signal_recvd, frame):
@@ -52,6 +63,7 @@ def sig_handler(signal_recvd, frame):
 # cleans the resume file
 def clear_resume():
     os.remove(".resume")
+
 
 # done with scanning (either quit or completion)
 def complete():
@@ -91,7 +103,7 @@ def generate_targets(interface):
 
 
 # main function
-def main(interface):
+def run(interface, scantype=0):
     global ips
     global alive_ips
 
@@ -109,7 +121,7 @@ def main(interface):
             ips = dat.replace("\00", "").splitlines()[0:-1]
             f.close()
             print("[INFO] Remaining addresses: {}".format(len(ips)))
-            
+
     else:
         ips = generate_targets(interface)
 
@@ -117,62 +129,96 @@ def main(interface):
 
     # set up the terminating signal handler
     signal(SIGINT, sig_handler)
-    
-    sock = s.socket(s.AF_INET, s.SOCK_STREAM)
-    #sock.setsockopt()
-
     num_ips = len(ips)
     total_done = 0
 
-    # loop over the addresses
-    for i in range(num_ips):
-        # randomly choose an ip from the list
-        address = ips[randint(0, len(ips)-1)]
-        # try to connect on random known port
-        try:
-            port = random_ports[randint(0, len(random_ports)-1)]
-            log("[INFO] Trying {} on {} ({:>.1f}%)".format(address, port, total_done/len(ips)))
 
-            sock.connect((address, port))
+    # normal TCP scan type
+    if scantype == 0:
+        sock = s.socket(s.AF_INET, s.SOCK_STREAM)
+        #sock.setsockopt()
+
         
-            # what are the chances we get this far without exceptions? 
-            # low... but not impossible
-            sock.close()
-            alive_ips.append(address)
-            log("[INFO] Address '{}' is up AND port '{}' is open".format(address, port))
-    
-        # host is up and port is closed
-        except ConnectionRefusedError:
-            alive_ips.append(address)
-            log("[INFO] Address '{}' is up".format(address))
+        # loop over the addresses
+        for i in range(num_ips):
+            # randomly choose an ip from the list
+            address = ips[randint(0, len(ips)-1)]
+            # try to connect on random known port
+            try:
+                port = random_ports[randint(0, len(random_ports)-1)]
+                log("[INFO] Trying {} on {} ({:>.1f}%)".format(address, port, total_done/len(ips)), e="\r")
 
-        # host is down
-        except OSError:
-            pass
+                sock.connect((address, port))
 
-        # user interrupt
-        except KeyboardInterrupt:
-            print("[CANCELED]")
-            break
+                # what are the chances we get this far without exceptions?
+                # low... but not impossible
+                sock.close()
+                alive_ips.append(address)
+                log("[INFO] Address '{}' is up AND port '{}' is open".format(address, port))
 
-        # we have gotten the info we wanted on the address, so remove it 
-        ips.remove(address)
+            # host is up and port is closed
+            except ConnectionRefusedError:
+                alive_ips.append(address)
+                log("[INFO] Address '{}' is up                ".format(address))
 
-        total_done += 1
-        time.sleep(random())
+            # host is down
+            except OSError:
+                pass
+
+            # user interrupt
+            except KeyboardInterrupt:
+                print("[CANCELED]")
+                break
+
+            # we have gotten the info we wanted on the address, so remove it
+            ips.remove(address)
+
+            total_done += 1
+            time.sleep(random())
+
+    # ARP IP scan
+    elif scantype == 1:
+        for i in range(num_ips):
+
+            # choose an address
+            address = ips[randint(0, len(ips)-1)]
+            log("[INFO] Trying {} ({:>.1f}%)".format(address, total_done/len(ips)), e="\r")
+            
+            # create request
+            alive = arprequest.ArpRequest(address, interface)
+            if alive.request():
+                alive_ips.append(address)
+                log("[INFO] Address '{}' is up                ".format(address))
+
+            # move on
+            ips.remove(address)
+            total_done += 1
+            time.sleep(random())
+
+
 
     clear_resume()
     complete()
 
 
 
+def main():
+    # check privilages
+    if not common.has_root():
+        print("[ERROR] Insufficient privilages! Please run as root")
+        sys.exit(1)
 
-if len(sys.argv) != 2:
-    print("[ERROR] Illegal argument count")
-    print("Usage: {} <interface>".format(sys.argv[0]))
-    sys.exit(1)
-else:
-    interface = sys.argv[1]
+    args = parser.parse_args()
+    scantype = 0
+    interface = args.interface
+
+    # see if we are scanning using ARP
+    if args.arpscan:
+        scantype = 1
 
 
-main(interface)
+    run(interface, scantype=1)
+
+
+if __name__ == '__main__':
+    main()
